@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LifeOS</title>
+  <style>
+    body { font-family: ui-monospace, Menlo, monospace; background: #0b0e14; color: #e6eaf0; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+    .box { text-align: center; }
+    .status { font-size: 14px; color: #8a94a6; margin-top: 12px; }
+    .ok { color: #3fb950; }
+    .err { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div style="font-size: 22px; letter-spacing: 0.2em;">LIFEOS</div>
+    <div class="status" id="status">connecting…</div>
+  </div>
+  <script>
+    fetch('/api/health')
+      .then(r => r.json())
+      .then(d => {
+        const s = document.getElementById('status');
+        if (d.ok) {
+          s.innerHTML = '<span class="ok">connected</span> · ' + d.goals + ' goals in database';
+        } else {
+          s.innerHTML = '<span class="err">error: ' + d.error + '</span>';
+        }
+      })
+      .catch(e => {
+        document.getElementById('status').innerHTML = '<span class="err">could not reach api</span>';
+      });
+  </script>
+</body>
+</html>
