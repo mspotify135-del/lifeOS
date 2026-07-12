@@ -1,36 +1,408 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LifeOS</title>
-  <style>
-    body { font-family: ui-monospace, Menlo, monospace; background: #0b0e14; color: #e6eaf0; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-    .box { text-align: center; }
-    .status { font-size: 14px; color: #8a94a6; margin-top: 12px; }
-    .ok { color: #3fb950; }
-    .err { color: #ef4444; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LifeOS</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=Inter:wght@400;500&display=swap');
+
+  :root {
+    --void: #05070d;
+    --haze: #0b0f18;
+    --line: #1a2230;
+    --dim: #5a6472;
+    --live: #c8d2e0;
+    --signal: #6fb4d8;
+    --warm: #d8b48a;      /* dawn/dusk warmth, used sparingly */
+    --glow: rgba(111,180,216,0.06);
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --sans: 'Inter', system-ui, sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    background: var(--void);
+    color: var(--live);
+    font-family: var(--mono);
+    overflow-x: hidden;
+    min-height: 100vh;
+    position: relative;
+    transition: background 4s ease;
+  }
+
+  /* daypart moods shift the void's tint and a faint corner light */
+  body[data-daypart="dawn"]  { background: radial-gradient(120% 90% at 50% 0%, #0d0b10 0%, #05070d 60%); }
+  body[data-daypart="day"]   { background: radial-gradient(120% 90% at 50% -10%, #0a0e16 0%, #05070d 55%); }
+  body[data-daypart="dusk"]  { background: radial-gradient(120% 90% at 50% 0%, #100c0d 0%, #05070d 60%); }
+  body[data-daypart="night"] { background: radial-gradient(120% 100% at 50% 0%, #060810 0%, #030409 70%); }
+
+  /* faint starfield haze */
+  .stars {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image:
+      radial-gradient(1px 1px at 20% 30%, rgba(200,210,224,0.5), transparent),
+      radial-gradient(1px 1px at 70% 60%, rgba(200,210,224,0.35), transparent),
+      radial-gradient(1px 1px at 40% 80%, rgba(200,210,224,0.3), transparent),
+      radial-gradient(1px 1px at 85% 20%, rgba(200,210,224,0.4), transparent),
+      radial-gradient(1px 1px at 55% 45%, rgba(200,210,224,0.25), transparent),
+      radial-gradient(1px 1px at 10% 65%, rgba(200,210,224,0.3), transparent);
+    opacity: 0; transition: opacity 3s ease;
+  }
+  .stars.lit { opacity: 1; }
+
+  .wrap {
+    position: relative; z-index: 1;
+    max-width: 780px; margin: 0 auto;
+    padding: 48px 28px 140px;
+    min-height: 100vh;
+  }
+
+  /* ---- top instrument bar ---- */
+  .bar {
+    display: flex; justify-content: space-between; align-items: baseline;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 14px; margin-bottom: 40px;
+    opacity: 0; transform: translateY(-6px);
+    transition: opacity 1.2s ease, transform 1.2s ease;
+  }
+  .bar.up { opacity: 1; transform: none; }
+  .bar .id { font-size: 12px; letter-spacing: 0.42em; color: var(--dim); font-weight: 400; }
+  .bar .clock { font-size: 12px; letter-spacing: 0.2em; color: var(--live); font-variant-numeric: tabular-nums; }
+  .bar .clock .part { color: var(--signal); }
+
+  /* ---- registration lines (system coming online) ---- */
+  .reg { margin-bottom: 40px; min-height: 20px; }
+  .reg .row {
+    font-size: 12px; letter-spacing: 0.14em; color: var(--dim);
+    opacity: 0; transform: translateX(-4px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    margin-bottom: 6px; display: flex; gap: 12px; align-items: center;
+  }
+  .reg .row.show { opacity: 1; transform: none; }
+  .reg .row .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 6px var(--signal); }
+  .reg .row .ok { color: var(--dim); margin-left: auto; }
+
+  /* ---- the brief ---- */
+  .brief-eyebrow {
+    font-size: 11px; letter-spacing: 0.4em; color: var(--dim);
+    margin-bottom: 20px; opacity: 0; transition: opacity 1s ease;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .brief-eyebrow.show { opacity: 1; }
+  .brief-eyebrow .skip {
+    cursor: pointer; color: var(--dim); border: 1px solid var(--line);
+    padding: 3px 10px; letter-spacing: 0.2em; font-size: 10px;
+    transition: color 0.3s, border-color 0.3s;
+  }
+  .brief-eyebrow .skip:hover { color: var(--live); border-color: var(--dim); }
+
+  .brief {
+    font-size: 15.5px; line-height: 1.85; color: var(--live);
+    font-family: var(--mono); font-weight: 300;
+    white-space: pre-wrap; letter-spacing: 0.01em;
+    min-height: 40px;
+  }
+  .brief .caret {
+    display: inline-block; width: 8px; height: 17px;
+    background: var(--signal); vertical-align: text-bottom;
+    margin-left: 2px; animation: blink 1s step-end infinite;
+    box-shadow: 0 0 8px var(--signal);
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ---- deeper layers, held back ---- */
+  .deeper {
+    margin-top: 56px; opacity: 0; transform: translateY(10px);
+    transition: opacity 1.4s ease, transform 1.4s ease;
+    pointer-events: none;
+  }
+  .deeper.show { opacity: 1; transform: none; pointer-events: auto; }
+
+  .strata { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+  .stratum {
+    background: var(--void); padding: 16px 18px;
+    display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  }
+  .stratum .label { font-size: 11px; letter-spacing: 0.28em; color: var(--dim); }
+  .stratum .value { font-size: 13px; color: var(--live); text-align: right; font-weight: 300; }
+  .stratum .value.faint { color: var(--dim); }
+  .stratum .value .sig { color: var(--signal); }
+
+  /* ---- chat ---- */
+  .console {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 3;
+    background: linear-gradient(to top, var(--void) 70%, transparent);
+    padding: 20px 28px 26px;
+    opacity: 0; transform: translateY(20px);
+    transition: opacity 1s ease, transform 1s ease;
+  }
+  .console.show { opacity: 1; transform: none; }
+  .console-inner { max-width: 780px; margin: 0 auto; }
+
+  .replies { max-height: 40vh; overflow-y: auto; margin-bottom: 14px; }
+  .replies::-webkit-scrollbar { width: 3px; }
+  .replies::-webkit-scrollbar-thumb { background: var(--line); }
+  .msg { font-size: 14px; line-height: 1.7; margin-bottom: 16px; white-space: pre-wrap; font-weight: 300; }
+  .msg.you { color: var(--dim); }
+  .msg.you::before { content: "› "; color: var(--signal); }
+  .msg.jarvis { color: var(--live); }
+
+  .prompt { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--line); padding-top: 16px; }
+  .prompt .chev { color: var(--signal); font-size: 14px; }
+  .prompt input {
+    flex: 1; background: none; border: none; outline: none;
+    color: var(--live); font-family: var(--mono); font-size: 14px; letter-spacing: 0.02em;
+  }
+  .prompt input::placeholder { color: var(--dim); }
+  .prompt .think { color: var(--dim); font-size: 11px; letter-spacing: 0.2em; animation: pulse 1.4s ease infinite; }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+
+  @media (max-width: 600px) {
+    .wrap { padding: 32px 20px 140px; }
+    .brief { font-size: 14.5px; }
+    .console { padding: 16px 20px 22px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
 </head>
 <body>
-  <div class="box">
-    <div style="font-size: 22px; letter-spacing: 0.2em;">LIFEOS</div>
-    <div class="status" id="status">connecting…</div>
+  <div class="stars" id="stars"></div>
+  <div class="wrap">
+    <div class="bar" id="bar">
+      <span class="id">L I F E O S</span>
+      <span class="clock" id="clock">--:--</span>
+    </div>
+
+    <div class="reg" id="reg"></div>
+
+    <div class="brief-eyebrow" id="eyebrow">
+      <span id="eyebrowText">DAILY BRIEF</span>
+      <span class="skip" id="skip">SKIP</span>
+    </div>
+    <div class="brief" id="brief"></div>
+
+    <div class="deeper" id="deeper">
+      <div class="strata" id="strata"></div>
+    </div>
   </div>
-  <script>
-    fetch('/api/health')
-      .then(r => r.json())
-      .then(d => {
-        const s = document.getElementById('status');
-        if (d.ok) {
-          s.innerHTML = '<span class="ok">connected</span> · ' + d.goals + ' goals in database';
-        } else {
-          s.innerHTML = '<span class="err">error: ' + d.error + '</span>';
-        }
-      })
-      .catch(e => {
-        document.getElementById('status').innerHTML = '<span class="err">could not reach api</span>';
+
+  <div class="console" id="console">
+    <div class="console-inner">
+      <div class="replies" id="replies"></div>
+      <div class="prompt">
+        <span class="chev">›</span>
+        <input id="input" placeholder="ask..." autocomplete="off" spellcheck="false">
+        <span class="think" id="think" style="display:none">THINKING</span>
+      </div>
+    </div>
+  </div>
+
+<script>
+const API = ""; // same origin
+
+// ---------- daypart / mood ----------
+function daypart(h) {
+  if (h >= 5 && h < 9) return "dawn";
+  if (h >= 9 && h < 18) return "day";
+  if (h >= 18 && h < 21) return "dusk";
+  return "night";
+}
+function setMood() {
+  const now = new Date();
+  document.body.dataset.daypart = daypart(now.getHours());
+}
+function tickClock() {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  const dp = daypart(now.getHours()).toUpperCase();
+  document.getElementById("clock").innerHTML =
+    `${hh}<span class="part">:</span>${mm} <span style="color:var(--dim)">· ${dp}</span>`;
+}
+
+// ---------- typing effect ----------
+let typingTimer = null;
+let skipRequested = false;
+function typeText(el, text, speed, done) {
+  let i = 0;
+  const caret = document.createElement("span");
+  caret.className = "caret";
+  el.textContent = "";
+  el.appendChild(caret);
+  function step() {
+    if (skipRequested) {
+      el.textContent = text;
+      if (done) done();
+      return;
+    }
+    if (i >= text.length) {
+      caret.remove();
+      if (done) done();
+      return;
+    }
+    // insert next char before caret
+    caret.insertAdjacentText("beforebegin", text[i]);
+    i++;
+    // vary the rhythm slightly so it feels composed, not mechanical
+    let d = speed;
+    const c = text[i - 1];
+    if (c === "." || c === "?" || c === "!") d = speed * 12;
+    else if (c === "," || c === ";") d = speed * 6;
+    else if (c === "\n") d = speed * 8;
+    typingTimer = setTimeout(step, d);
+  }
+  step();
+}
+
+// ---------- registration sequence ----------
+const regLines = [
+  ["systems", "online"],
+  ["reading state", "notion · calendar"],
+  ["phase", "locating"],
+  ["composing brief", "standby"],
+];
+function runRegistration(done) {
+  const reg = document.getElementById("reg");
+  let idx = 0;
+  function next() {
+    if (idx >= regLines.length) { setTimeout(done, 500); return; }
+    const [txt, ok] = regLines[idx];
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = `<span class="dot"></span><span>${txt}</span><span class="ok">${ok}</span>`;
+    reg.appendChild(row);
+    requestAnimationFrame(() => row.classList.add("show"));
+    idx++;
+    setTimeout(next, 620);
+  }
+  next();
+}
+
+// ---------- deeper strata ----------
+function renderStrata(data) {
+  const strata = document.getElementById("strata");
+  const rows = [];
+  const phase = (data.phases || []).find(p => p.active);
+  if (phase) rows.push(["CURRENT PHASE", `<span class="sig">${phase.phase_name || phase.type || "—"}</span>`]);
+
+  // nearest requirement
+  const reqs = (data.requirements || []).filter(r => r.window_closes)
+    .sort((a,b) => new Date(a.window_closes) - new Date(b.window_closes));
+  if (reqs.length) {
+    const r = reqs[0];
+    const days = Math.ceil((new Date(r.window_closes) - new Date()) / 864e5);
+    rows.push(["NEAREST DEADLINE", `${r.item} · <span class="sig">${days}d</span>`]);
+  } else {
+    rows.push(["NEAREST DEADLINE", `<span class="faint">none set</span>`]);
+  }
+
+  // next calendar event
+  const evs = (data.calendar || []).filter(e => new Date(e.starts_at) >= new Date())
+    .sort((a,b) => new Date(a.starts_at) - new Date(b.starts_at));
+  if (evs.length) {
+    const e = evs[0];
+    const d = new Date(e.starts_at);
+    const when = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    rows.push(["NEXT ON CALENDAR", `${e.summary} · ${when}`]);
+  } else {
+    rows.push(["NEXT ON CALENDAR", `<span class="faint">clear</span>`]);
+  }
+
+  // tier-1 goal count
+  const t1 = (data.goals || []).filter(g => (g.tier||"").toLowerCase().includes("1") || (g.tier||"").toLowerCase().includes("tier 1"));
+  rows.push(["TIER 1 ACTIVE", `<span class="sig">${t1.length}</span> goals`]);
+
+  strata.innerHTML = rows.map(([l,v]) =>
+    `<div class="stratum"><span class="label">${l}</span><span class="value">${v}</span></div>`
+  ).join("");
+}
+
+// ---------- boot ----------
+async function boot() {
+  setMood();
+  tickClock();
+  setInterval(() => { tickClock(); setMood(); }, 20000);
+
+  // stars fade in
+  setTimeout(() => document.getElementById("stars").classList.add("lit"), 200);
+  // bar powers up
+  setTimeout(() => document.getElementById("bar").classList.add("up"), 600);
+
+  // fetch brief + supporting data in parallel with the registration animation
+  const briefPromise = fetch(API + "/api/brief").then(r => r.json()).catch(e => ({ ok:false, error:String(e) }));
+  const dataPromise = fetch(API + "/api/state").then(r => r.json()).catch(() => null);
+
+  // run registration, then reveal brief
+  setTimeout(() => {
+    runRegistration(async () => {
+      document.getElementById("eyebrow").classList.add("show");
+      const brief = await briefPromise;
+      const text = brief.ok ? brief.brief : "Brief unavailable. The reasoning layer didn't respond — check the sync and try again.";
+      typeText(document.getElementById("brief"), text, 16, async () => {
+        // after brief composes, reveal deeper layers + console
+        const data = await dataPromise;
+        if (data && data.ok) renderStrata(data);
+        setTimeout(() => document.getElementById("deeper").classList.add("show"), 300);
+        setTimeout(() => document.getElementById("console").classList.add("show"), 700);
       });
-  </script>
+    });
+  }, 1400);
+}
+
+// skip
+document.getElementById("skip").addEventListener("click", () => { skipRequested = true; });
+
+// ---------- chat ----------
+const history = [];
+const input = document.getElementById("input");
+const replies = document.getElementById("replies");
+const think = document.getElementById("think");
+
+input.addEventListener("keydown", async (e) => {
+  if (e.key !== "Enter" || !input.value.trim()) return;
+  const q = input.value.trim();
+  input.value = "";
+  addMsg("you", q);
+  history.push({ role: "user", content: q });
+  think.style.display = "inline";
+  try {
+    const r = await fetch(API + "/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: history }),
+    });
+    const d = await r.json();
+    const reply = d.ok ? d.reply : "No response. The reasoning layer is unreachable right now.";
+    addMsg("jarvis", reply);
+    history.push({ role: "assistant", content: reply });
+  } catch (err) {
+    addMsg("jarvis", "Connection failed.");
+  } finally {
+    think.style.display = "none";
+  }
+});
+
+function addMsg(who, text) {
+  const div = document.createElement("div");
+  div.className = "msg " + who;
+  replies.appendChild(div);
+  if (who === "jarvis") {
+    skipRequested = false;
+    typeText(div, text, 12);
+  } else {
+    div.textContent = text;
+  }
+  replies.scrollTop = replies.scrollHeight;
+}
+
+boot();
+</script>
 </body>
 </html>
