@@ -120,6 +120,16 @@ async function syncTable(t) {
   return { table: t.name, ok: true, synced: rows.length };
 }
 
+async function runCalendarSync(req) {
+  try {
+    const base = `https://${req.headers.host}`;
+    const r = await fetch(`${base}/api/sync-calendar`);
+    return await r.json();
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
 export default async function handler(req, res) {
   if (!NOTION_TOKEN || !SUPABASE_URL || !SUPABASE_KEY) {
     return res.status(200).json({ ok: false, error: "missing env vars" });
@@ -129,5 +139,6 @@ export default async function handler(req, res) {
     try { results.push(await syncTable(t)); }
     catch (e) { results.push({ table: t.name, ok: false, error: String(e) }); }
   }
-  res.status(200).json({ ok: results.every(r => r.ok), results });
+  const calendar = await runCalendarSync(req);
+  res.status(200).json({ ok: results.every(r => r.ok) && calendar.ok, results, calendar });
 }
